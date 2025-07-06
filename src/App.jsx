@@ -301,7 +301,8 @@ export default function App() {
         if (!survey) return;
 
         const isAnswered = userAnsweredSurveyIds.includes(id);
-        const isExpired = survey.expiresAt && survey.expiresAt.toDate() < new Date();
+        // FIX: Safely check for expiration date
+        const isExpired = survey.expiresAt ? survey.expiresAt.toDate() < new Date() : false;
 
         if (userProfile.role === 'mudur') {
             setView('results');
@@ -355,7 +356,7 @@ export default function App() {
                 <div className="flex-grow p-2 overflow-y-auto">
                     {surveys.map(survey => {
                         const isAnswered = userAnsweredSurveyIds.includes(survey.id);
-                        const isExpired = survey.expiresAt && survey.expiresAt.toDate() < new Date();
+                        const isExpired = survey.expiresAt ? survey.expiresAt.toDate() < new Date() : false;
                         return (
                             <div key={survey.id} onClick={() => !isBusy && handleSelectSurvey(survey.id)} className={`bg-gray-700 rounded-lg p-3 mb-2 transition-all ${isAnswered || isExpired ? 'opacity-60' : ''} ${isBusy ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-600'}`}>
                                 <div className="flex justify-between items-start">
@@ -553,7 +554,8 @@ const ResultsView = ({ survey }) => {
     if (!survey) return <WelcomeView />;
 
     const totalVotes = surveyAnswers.length;
-    const isExpired = survey.expiresAt && survey.expiresAt.toDate() < new Date();
+    // FIX: Safely check for expiration date
+    const isExpired = survey.expiresAt ? survey.expiresAt.toDate() < new Date() : false;
     const isTimeless = !survey.expiresAt;
 
     const canViewResults = isExpired || isTimeless;
@@ -564,9 +566,11 @@ const ResultsView = ({ survey }) => {
                 <Icon name="lock" className="fa-4x text-yellow-400 mb-4" />
                 <h2 className="text-2xl font-bold mb-2">Sonuçlar Henüz Görüntülenemiyor</h2>
                 <p className="text-gray-400">Anonimliği korumak için, sonuçlar anketin bitiş süresi dolduğunda gösterilecektir.</p>
-                <div className="mt-4 text-sm text-gray-500">
-                    <p>Bitiş Tarihi: {survey.expiresAt.toDate().toLocaleDateString('tr-TR')}</p>
-                </div>
+                {survey.expiresAt && (
+                    <div className="mt-4 text-sm text-gray-500">
+                        <p>Bitiş Tarihi: {survey.expiresAt.toDate().toLocaleDateString('tr-TR')}</p>
+                    </div>
+                )}
             </div>
         );
     }
