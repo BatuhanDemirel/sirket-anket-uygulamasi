@@ -257,6 +257,8 @@ export default function App() {
     const [selectedSurveyId, setSelectedSurveyId] = useState(null);
     const [view, setView] = useState('welcome');
     const [isBusy, setIsBusy] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [surveyToDelete, setSurveyToDelete] = useState(null);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -288,6 +290,7 @@ export default function App() {
     useEffect(() => {
         if (view === 'welcome') {
             setIsBusy(false);
+            setSelectedSurveyId(null);
         }
     }, [view]);
 
@@ -301,7 +304,6 @@ export default function App() {
         if (!survey) return;
 
         const isAnswered = userAnsweredSurveyIds.includes(id);
-        // FIX: Safely check for expiration date
         const isExpired = survey.expiresAt ? survey.expiresAt.toDate() < new Date() : false;
 
         if (userProfile.role === 'mudur') {
@@ -315,6 +317,46 @@ export default function App() {
         }
         
         setView('take');
+    };
+
+    const handleDeleteSurvey = async () => {
+        if (!surveyToDelete) return;
+        setIsBusy(true);
+
+        const surveyId = surveyToDelete;
+        
+        try {
+            const answersQuery = query(collection(db, `artifacts/${appId}/public/data/answers`), where("surveyId", "==", surveyId));
+            const answersSnapshot = await getDocs(answersQuery);
+
+            const batch = writeBatch(db);
+
+            answersSnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            const surveyRef = doc(db, `artifacts/${appId}/public/data/surveys`, surveyId);
+            batch.delete(surveyRef);
+
+            await batch.commit();
+
+            if (selectedSurveyId === surveyId) {
+                setView('welcome');
+            }
+        } catch (error) {
+            console.error("Error deleting survey:", error);
+            alert("Anket silinirken bir hata oluştu.");
+        } finally {
+            setSurveyToDelete(null);
+            setShowDeleteModal(false);
+            setIsBusy(false);
+        }
+    };
+
+    const openDeleteModal = (e, surveyId) => {
+        e.stopPropagation(); // Prevent survey selection
+        setSurveyToDelete(surveyId);
+        setShowDeleteModal(true);
     };
     
     const renderView = () => {
@@ -343,41 +385,62 @@ export default function App() {
     }
 
     return (
-        <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-gray-200">
-            <aside className="w-full md:w-1/3 lg:w-1/4 bg-gray-800 border-r border-gray-700 flex flex-col">
-                <header className="p-4 border-b border-gray-700 flex justify-between items-center">
-                    <h1 className="text-xl font-bold text-white">Anketler</h1>
-                    {(userProfile.role === 'mudur' || userProfile.role === 'admin') && (
-                        <button onClick={() => setView('create')} className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm disabled:bg-gray-500 disabled:cursor-not-allowed" disabled={isBusy}>
-                            <Icon name="plus" className="mr-1" /> Yeni
-                        </button>
-                    )}
-                </header>
-                <div className="flex-grow p-2 overflow-y-auto">
-                    {surveys.map(survey => {
-                        const isAnswered = userAnsweredSurveyIds.includes(survey.id);
-                        const isExpired = survey.expiresAt ? survey.expiresAt.toDate() < new Date() : false;
-                        return (
-                            <div key={survey.id} onClick={() => !isBusy && handleSelectSurvey(survey.id)} className={`bg-gray-700 rounded-lg p-3 mb-2 transition-all ${isAnswered || isExpired ? 'opacity-60' : ''} ${isBusy ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-600'}`}>
-                                <div className="flex justify-between items-start">
-                                    <h3 className="font-bold text-white mb-1">{survey.title}</h3>
-                                    {isAnswered && <span className="text-xs bg-green-600 text-white px-2 py-1 rounded-full">Yanıtlandı</span>}
+        <>
+            <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-gray-200">
+                <aside className="w-full md:w-1/3 lg:w-1/4 bg-gray-800 border-r border-gray-700 flex flex-col">
+                    <header className="p-4 border-b border-gray-700 flex justify-between items-center">
+                        <h1 className="text-xl font-bold text-white">Anketler</h1>
+                        {(userProfile.role === 'mudur' || userProfile.role === 'admin') && (
+                            <button onClick={() => setView('create')} className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm disabled:bg-gray-500 disabled:cursor-not-allowed" disabled={isBusy}>
+                                <Icon name="plus" className="mr-1" /> Yeni
+                            </button>
+                        )}
+                    </header>
+                    <div className="flex-grow p-2 overflow-y-auto">
+                        {surveys.map(survey => {
+                            const isAnswered = userAnsweredSurveyIds.includes(survey.id);
+                            const isExpired = survey.expiresAt ? survey.expiresAt.toDate() < new Date() : false;
+                            return (
+                                <div key={survey.id} onClick={() => !isBusy && handleSelectSurvey(survey.id)} className={`bg-gray-700 rounded-lg p-3 mb-2 transition-all ${isAnswered || isExpired ? 'opacity-60' : ''} ${isBusy ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-600'}`}>
+                                    <div className="flex justify-between items-start">
+                                        <h3 className="font-bold text-white mb-1">{survey.title}</h3>
+                                        {isAnswered && <span className="text-xs bg-green-600 text-white px-2 py-1 rounded-full">Yanıtlandı</span>}
+                                    </div>
+                                    <p className="text-sm text-gray-400 truncate">{survey.description}</p>
+                                    <div className="flex justify-between items-center mt-2">
+                                        <div className="text-xs">{isExpired ? <span className="text-red-400">Süresi Doldu</span> : (survey.expiresAt ? <span className="text-yellow-400">Bitiş: {survey.expiresAt.toDate().toLocaleDateString('tr-TR')}</span> : <span className="text-green-400">Süresiz</span>)}</div>
+                                        {(userProfile.role === 'admin' || userProfile.role === 'mudur') && (
+                                            <button onClick={(e) => openDeleteModal(e, survey.id)} className="text-red-400 hover:text-red-300 transition-colors text-xs font-semibold" title="Anketi Sil">
+                                                <Icon name="trash-alt" className="mr-1" /> Sil
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                                <p className="text-sm text-gray-400 truncate">{survey.description}</p>
-                                <div className="text-xs mt-2">{isExpired ? <span className="text-red-400">Süresi Doldu</span> : (survey.expiresAt ? <span className="text-yellow-400">Bitiş: {survey.expiresAt.toDate().toLocaleDateString('tr-TR')}</span> : <span className="text-green-400">Süresiz</span>)}</div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
+                    <footer className="p-3 border-t border-gray-700 text-xs text-gray-400">
+                        <p>{userProfile.email} ({userProfile.role})</p>
+                        <button onClick={() => signOut(auth)} className="w-full mt-2 text-left text-red-400 hover:underline">Çıkış Yap</button>
+                    </footer>
+                </aside>
+                <main className="w-full md:w-2/3 lg:w-3/4 flex-grow p-6 overflow-y-auto">
+                    {renderView()}
+                </main>
+            </div>
+            {showDeleteModal && (
+                 <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm shadow-xl">
+                        <h3 className="text-lg font-bold mb-4">Anketi Sil</h3>
+                        <p className="text-gray-300 mb-6">Bu anketi ve tüm yanıtlarını kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.</p>
+                        <div className="flex justify-end space-x-4">
+                            <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 rounded-md font-semibold text-white bg-gray-600 hover:bg-gray-700 transition-colors">İptal</button>
+                            <button onClick={handleDeleteSurvey} className="px-4 py-2 rounded-md font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors">Onayla ve Sil</button>
+                        </div>
+                    </div>
                 </div>
-                <footer className="p-3 border-t border-gray-700 text-xs text-gray-400">
-                    <p>{userProfile.email} ({userProfile.role})</p>
-                    <button onClick={() => signOut(auth)} className="w-full mt-2 text-left text-red-400 hover:underline">Çıkış Yap</button>
-                </footer>
-            </aside>
-            <main className="w-full md:w-2/3 lg:w-3/4 flex-grow p-6 overflow-y-auto">
-                {renderView()}
-            </main>
-        </div>
+            )}
+        </>
     );
 }
 
@@ -554,7 +617,6 @@ const ResultsView = ({ survey }) => {
     if (!survey) return <WelcomeView />;
 
     const totalVotes = surveyAnswers.length;
-    // FIX: Safely check for expiration date
     const isExpired = survey.expiresAt ? survey.expiresAt.toDate() < new Date() : false;
     const isTimeless = !survey.expiresAt;
 
