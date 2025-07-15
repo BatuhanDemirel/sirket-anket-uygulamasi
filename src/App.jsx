@@ -196,31 +196,68 @@ const CreateSurveyView = ({ userProfile, setView, setIsBusy }) => {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [expiresAt, setExpiresAt] = useState('');
-    const [questions, setQuestions] = useState([{ text: '', options: ['', ''] }]);
-    const [hasFeedbackField, setHasFeedbackField] = useState(true);
+    const [questions, setQuestions] = useState([{ type: 'multiple-choice', text: '', options: ['', ''] }]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleAddQuestion = () => setQuestions([...questions, { text: '', options: ['', ''] }]);
+    const addQuestion = (type) => {
+        if (type === 'multiple-choice') {
+            setQuestions([...questions, { type: 'multiple-choice', text: '', options: ['', ''] }]);
+        } else if (type === 'text') {
+            setQuestions([...questions, { type: 'text', text: '' }]);
+        }
+    };
+
     const handleQuestionChange = (qIndex, value) => {
         const newQuestions = [...questions];
         newQuestions[qIndex].text = value;
         setQuestions(newQuestions);
     };
+
     const handleOptionChange = (qIndex, oIndex, value) => {
         const newQuestions = [...questions];
         newQuestions[qIndex].options[oIndex] = value;
         setQuestions(newQuestions);
     };
+
     const handleAddOption = (qIndex) => {
         const newQuestions = [...questions];
         newQuestions[qIndex].options.push('');
         setQuestions(newQuestions);
     };
+    
+    const handleRemoveOption = (qIndex, oIndex) => {
+        const newQuestions = [...questions];
+        if (newQuestions[qIndex].options.length <= 2) {
+            alert("Bir soruda en az 2 seçenek olmalıdır.");
+            return;
+        }
+        newQuestions[qIndex].options.splice(oIndex, 1);
+        setQuestions(newQuestions);
+    };
+
+    const removeQuestion = (qIndex) => {
+        if (questions.length <= 1) {
+            alert("Ankette en az bir soru olmalıdır.");
+            return;
+        }
+        const newQuestions = questions.filter((_, index) => index !== qIndex);
+        setQuestions(newQuestions);
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (questions.some(q => !q.text || q.options.length < 2 || q.options.some(o => !o))) {
-            alert("Lütfen tüm soruları ve en az iki seçeneği doldurun.");
+        const isValid = questions.every(q => {
+            if (q.type === 'multiple-choice') {
+                return q.text && q.options.length >= 2 && q.options.every(opt => opt);
+            }
+            if (q.type === 'text') {
+                return q.text;
+            }
+            return false;
+        });
+
+        if (!isValid) {
+            alert("Lütfen tüm soruları ve (şıklı sorular için) en az iki seçeneği doldurun.");
             return;
         }
         
@@ -231,7 +268,6 @@ const CreateSurveyView = ({ userProfile, setView, setIsBusy }) => {
                 title,
                 description,
                 questions,
-                hasFeedbackField,
                 expiresAt: expiresAt ? new Date(expiresAt) : null,
                 creatorId: userProfile.uid,
                 createdAt: serverTimestamp(),
@@ -254,22 +290,31 @@ const CreateSurveyView = ({ userProfile, setView, setIsBusy }) => {
                 <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Açıklama" className="w-full bg-gray-700 p-2 rounded" disabled={isSubmitting} />
                 <input type="date" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} className="w-full bg-gray-700 p-2 rounded" style={{colorScheme: 'dark'}} disabled={isSubmitting} />
                 
-                <label className="flex items-center space-x-2 text-white cursor-pointer">
-                    <input type="checkbox" checked={hasFeedbackField} onChange={(e) => setHasFeedbackField(e.target.checked)} className="form-checkbox bg-gray-600 border-gray-500 text-blue-500 h-5 w-5 rounded" disabled={isSubmitting}/>
-                    <span>Ekstra yorum alanı ekle ("Düşünceleriniz nedir?" gibi)</span>
-                </label>
-
                 {questions.map((q, qIndex) => (
-                    <div key={qIndex} className="bg-gray-800 p-4 rounded-lg space-y-2">
-                        <input type="text" value={q.text} onChange={e => handleQuestionChange(qIndex, e.target.value)} placeholder={`Soru ${qIndex + 1}`} className="w-full bg-gray-700 p-2 rounded" required disabled={isSubmitting} />
-                        {q.options.map((opt, oIndex) => (
-                            <input key={oIndex} type="text" value={opt} onChange={e => handleOptionChange(qIndex, oIndex, e.target.value)} placeholder={`Seçenek ${oIndex + 1}`} className="w-full bg-gray-600 p-2 rounded" required disabled={isSubmitting} />
-                        ))}
-                        <button type="button" onClick={() => handleAddOption(qIndex)} className="text-blue-400 text-sm hover:underline" disabled={isSubmitting}>+ Seçenek Ekle</button>
+                    <div key={qIndex} className="bg-gray-800 p-4 rounded-lg space-y-3 relative">
+                         <button type="button" onClick={() => removeQuestion(qIndex)} className="absolute top-2 right-2 text-gray-500 hover:text-white" title="Bu soruyu sil">&times;</button>
+                        <label className="font-semibold text-white">Soru {qIndex + 1}: ({q.type === 'multiple-choice' ? 'Şıklı Soru' : 'Metin Sorusu'})</label>
+                        <input type="text" value={q.text} onChange={e => handleQuestionChange(qIndex, e.target.value)} placeholder="Soru metnini girin..." className="w-full bg-gray-700 p-2 rounded" required disabled={isSubmitting} />
+                        
+                        {q.type === 'multiple-choice' && (
+                            <div className="pl-4 space-y-2">
+                                {q.options.map((opt, oIndex) => (
+                                    <div key={oIndex} className="flex items-center space-x-2">
+                                        <input type="text" value={opt} onChange={e => handleOptionChange(qIndex, oIndex, e.target.value)} placeholder={`Seçenek ${oIndex + 1}`} className="w-full bg-gray-600 p-2 rounded" required disabled={isSubmitting} />
+                                        <button type="button" onClick={() => handleRemoveOption(qIndex, oIndex)} className="text-red-500 hover:text-red-400 disabled:text-gray-600 disabled:cursor-not-allowed" disabled={isSubmitting || q.options.length <= 2} title="Bu seçeneği sil">
+                                            <Icon name="times-circle" />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button type="button" onClick={() => handleAddOption(qIndex)} className="text-blue-400 text-sm hover:underline" disabled={isSubmitting}>+ Seçenek Ekle</button>
+                            </div>
+                        )}
                     </div>
                 ))}
-                <div className="flex items-center space-x-4">
-                    <button type="button" onClick={handleAddQuestion} className="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500 disabled:bg-gray-400" disabled={isSubmitting}>Soru Ekle</button>
+
+                <div className="flex items-center space-x-4 pt-4">
+                    <button type="button" onClick={() => addQuestion('multiple-choice')} className="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500 disabled:bg-gray-400" disabled={isSubmitting}>Şıklı Soru Ekle</button>
+                    <button type="button" onClick={() => addQuestion('text')} className="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500 disabled:bg-gray-400" disabled={isSubmitting}>Metin Sorusu Ekle</button>
                     <button type="submit" className="px-4 py-2 bg-green-600 rounded hover:bg-green-500 disabled:bg-green-400" disabled={isSubmitting}>
                         {isSubmitting ? <Icon name="spinner" className="fa-spin" /> : 'Anketi Kaydet'}
                     </button>
@@ -280,13 +325,30 @@ const CreateSurveyView = ({ userProfile, setView, setIsBusy }) => {
 };
 
 const TakeSurveyView = ({ survey, userProfile, setView, setIsBusy }) => {
-    const [responses, setResponses] = useState({});
-    const [feedbackText, setFeedbackText] = useState('');
+    const [responses, setResponses] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (survey) {
+            setResponses(Array(survey.questions.length).fill(null));
+        }
+    }, [survey]);
+
+    const handleResponseChange = (qIndex, value) => {
+        const newResponses = [...responses];
+        newResponses[qIndex] = value;
+        setResponses(newResponses);
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (Object.keys(responses).length !== survey.questions.length) {
+        const allAnswered = responses.every((res, index) => {
+            const question = survey.questions[index];
+            if (question.type === 'text') return true; 
+            return res !== null;
+        });
+
+        if (!allAnswered) {
             alert("Lütfen tüm şıklı soruları yanıtlayın.");
             return;
         }
@@ -298,8 +360,7 @@ const TakeSurveyView = ({ survey, userProfile, setView, setIsBusy }) => {
             await addDoc(collection(db, `artifacts/${appId}/public/data/answers`), {
                 surveyId: survey.id,
                 userId: userProfile.uid,
-                responses: Object.values(responses),
-                feedbackText: feedbackText,
+                responses: responses,
                 submittedAt: serverTimestamp(),
             });
             setView('welcome');
@@ -322,22 +383,18 @@ const TakeSurveyView = ({ survey, userProfile, setView, setIsBusy }) => {
                 {survey.questions.map((q, qIndex) => (
                     <fieldset key={qIndex} className="space-y-2">
                         <legend className="text-lg font-medium text-white mb-2">{qIndex + 1}. {q.text}</legend>
-                        {q.options.map((opt, oIndex) => (
-                            <label key={oIndex} className={`flex items-center bg-gray-700 p-3 rounded-md ${isSubmitting ? 'cursor-not-allowed' : 'hover:bg-gray-600 cursor-pointer'}`}>
-                                <input type="radio" name={`q-${qIndex}`} value={oIndex} onChange={() => setResponses({...responses, [qIndex]: oIndex})} className="h-4 w-4 text-blue-600 bg-gray-800 border-gray-600 focus:ring-blue-500" required disabled={isSubmitting} />
-                                <span className="ml-3 text-white">{opt}</span>
-                            </label>
-                        ))}
+                        {q.type === 'multiple-choice' ? (
+                            q.options.map((opt, oIndex) => (
+                                <label key={oIndex} className={`flex items-center bg-gray-700 p-3 rounded-md ${isSubmitting ? 'cursor-not-allowed' : 'hover:bg-gray-600 cursor-pointer'}`}>
+                                    <input type="radio" name={`q-${qIndex}`} value={oIndex} onChange={() => handleResponseChange(qIndex, oIndex)} className="h-4 w-4 text-blue-600 bg-gray-800 border-gray-600 focus:ring-blue-500" required disabled={isSubmitting} />
+                                    <span className="ml-3 text-white">{opt}</span>
+                                </label>
+                            ))
+                        ) : (
+                            <textarea value={responses[qIndex] || ''} onChange={(e) => handleResponseChange(qIndex, e.target.value)} rows="4" placeholder="Cevabınızı buraya yazın..." className="w-full bg-gray-700 p-2 rounded text-white placeholder-gray-400" disabled={isSubmitting}/>
+                        )}
                     </fieldset>
                 ))}
-
-                {survey.hasFeedbackField && (
-                    <fieldset className="space-y-2">
-                        <legend className="text-lg font-medium text-white mb-2">Belirtmek istediğiniz diğer düşünceleriniz (isteğe bağlı)</legend>
-                        <textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} rows="4" placeholder="Düşüncelerinizi buraya yazın..." className="w-full bg-gray-700 p-2 rounded text-white placeholder-gray-400" disabled={isSubmitting}/>
-                    </fieldset>
-                )}
-
                 <button type="submit" disabled={isSubmitting} className="w-full px-4 py-3 bg-green-600 text-white font-bold rounded-md hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed">
                     {isSubmitting ? <Icon name="spinner" className="fa-spin" /> : 'Cevapları Gönder'}
                 </button>
@@ -371,13 +428,12 @@ const ResultsView = ({ survey }) => {
         return <div className="flex justify-center items-center h-full"><Icon name="spinner" className="fa-spin fa-2x text-blue-500" /></div>;
     }
 
-    if (!survey) return <WelcomeView />;
+    if (!survey || !survey.questions) return <WelcomeView />;
 
     const totalVotes = surveyAnswers.length;
     const isExpired = survey.expiresAt ? survey.expiresAt.toDate() < new Date() : false;
     const isTimeless = !survey.expiresAt;
     const canViewResults = isExpired || isTimeless;
-    const feedbackComments = surveyAnswers.map(answer => answer.feedbackText).filter(text => text && text.trim() !== '');
 
     if (!canViewResults) {
         return (
@@ -401,42 +457,60 @@ const ResultsView = ({ survey }) => {
             <p className="text-sm text-blue-400 font-semibold mb-6">Toplam {totalVotes} kişi katıldı.</p>
             <div className="space-y-8">
                 {survey.questions.map((question, qIndex) => {
-                    const votes = new Array(question.options.length).fill(0);
-                    surveyAnswers.forEach(answer => {
-                        const choice = answer.responses[qIndex];
-                        if (choice !== undefined && choice < votes.length) votes[choice]++;
-                    });
-                    return (
-                        <div key={qIndex} className="bg-gray-800 p-4 rounded-lg">
-                            <h4 className="text-lg font-semibold text-white mb-3">{qIndex + 1}. {question.text}</h4>
-                            {question.options.map((option, oIndex) => {
-                                const voteCount = votes[oIndex];
-                                const percentage = totalVotes > 0 ? ((voteCount / totalVotes) * 100).toFixed(1) : 0;
-                                return (
-                                    <div key={oIndex} className="mb-2">
-                                        <div className="flex justify-between items-center text-sm mb-1">
-                                            <span>{option}</span>
-                                            <span className="font-semibold">{voteCount} Oy ({percentage}%)</span>
+                    if (question.type === 'multiple-choice') {
+                        const options = question.options || [];
+                        const votes = new Array(options.length).fill(0);
+                        surveyAnswers.forEach(answer => {
+                            if (answer.responses && typeof answer.responses[qIndex] === 'number') {
+                                votes[answer.responses[qIndex]]++;
+                            }
+                        });
+
+                        return (
+                            <div key={qIndex} className="bg-gray-800 p-4 rounded-lg">
+                                <h4 className="text-lg font-semibold text-white mb-3">{qIndex + 1}. {question.text}</h4>
+                                {options.map((option, oIndex) => {
+                                    const voteCount = votes[oIndex];
+                                    const percentage = totalVotes > 0 ? ((voteCount / totalVotes) * 100).toFixed(1) : 0;
+                                    return (
+                                        <div key={oIndex} className="mb-2">
+                                            <div className="flex justify-between items-center text-sm mb-1">
+                                                <span>{option}</span>
+                                                <span className="font-semibold">{voteCount} Oy ({percentage}%)</span>
+                                            </div>
+                                            <div className="w-full bg-gray-700 rounded-full h-2.5">
+                                                <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+                                            </div>
                                         </div>
-                                        <div className="w-full bg-gray-700 rounded-full h-2.5">
-                                            <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
-                                        </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    }
+
+                    if (question.type === 'text') {
+                        const textAnswers = surveyAnswers
+                            .map(answer => answer.responses && answer.responses[qIndex])
+                            .filter(response => typeof response === 'string' && response.trim() !== '');
+
+                        return (
+                            <div key={qIndex} className="bg-gray-800 p-4 rounded-lg">
+                                <h4 className="text-lg font-semibold text-white mb-3">{qIndex + 1}. {question.text}</h4>
+                                {textAnswers.length > 0 ? (
+                                    <div className="space-y-3 max-h-60 overflow-y-auto">
+                                        {textAnswers.map((text, aIndex) => (
+                                            <p key={aIndex} className="bg-gray-700 p-3 rounded-md text-gray-300 italic">"{text}"</p>
+                                        ))}
                                     </div>
-                                );
-                            })}
-                        </div>
-                    );
+                                ) : (
+                                    <p className="text-gray-500">Bu soruya yazılı bir cevap verilmemiş.</p>
+                                )}
+                            </div>
+                        );
+                    }
+
+                    return null;
                 })}
-                {survey.hasFeedbackField && feedbackComments.length > 0 && (
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                        <h4 className="text-lg font-semibold text-white mb-3">Ek Yorumlar</h4>
-                        <div className="space-y-3">
-                            {feedbackComments.map((comment, index) => (
-                                <p key={index} className="bg-gray-700 p-3 rounded-md text-gray-300 italic">"{comment}"</p>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
@@ -455,6 +529,7 @@ export default function App() {
     const [isBusy, setIsBusy] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [surveyToDelete, setSurveyToDelete] = useState(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -504,15 +579,12 @@ export default function App() {
 
         if (userProfile.role === 'mudur') {
             setView('results');
-            return;
-        }
-
-        if (isExpired || isAnswered) {
+        } else if (isExpired || isAnswered) {
             setView('results');
-            return;
+        } else {
+            setView('take');
         }
-        
-        setView('take');
+        setIsSidebarOpen(false); // Close sidebar on selection
     };
 
     const handleDeleteSurvey = async () => {
@@ -572,12 +644,16 @@ export default function App() {
 
     return (
         <>
-            <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-gray-200">
-                <aside className="w-full md:w-1/3 lg:w-1/4 bg-gray-800 border-r border-gray-700 flex flex-col">
+            <div className="relative min-h-screen md:flex bg-gray-900 text-gray-200">
+                {/* Mobile Sidebar Overlay */}
+                {isSidebarOpen && <div className="fixed inset-0 bg-black opacity-50 z-20 md:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
+                
+                {/* Sidebar */}
+                <aside className={`fixed inset-y-0 left-0 bg-gray-800 w-64 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-200 ease-in-out z-30 flex flex-col`}>
                     <header className="p-4 border-b border-gray-700 flex justify-between items-center">
                         <h1 className="text-xl font-bold text-white">Anketler</h1>
                         {(userProfile.role === 'mudur' || userProfile.role === 'admin') && (
-                            <button onClick={() => setView('create')} className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm disabled:bg-gray-500 disabled:cursor-not-allowed" disabled={isBusy}>
+                            <button onClick={() => { setView('create'); setIsSidebarOpen(false); }} className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm disabled:bg-gray-500 disabled:cursor-not-allowed" disabled={isBusy}>
                                 <Icon name="plus" className="mr-1" /> Yeni
                             </button>
                         )}
@@ -610,8 +686,18 @@ export default function App() {
                         <button onClick={() => signOut(auth)} className="w-full mt-2 text-left text-red-400 hover:underline">Çıkış Yap</button>
                     </footer>
                 </aside>
-                <main className="w-full md:w-2/3 lg:w-3/4 flex-grow p-6 overflow-y-auto">
-                    {renderView()}
+                
+                {/* Main Content */}
+                <main className="flex-1 flex flex-col">
+                    <header className="md:hidden p-4 bg-gray-800 border-b border-gray-700 flex items-center">
+                        <button onClick={() => setIsSidebarOpen(true)} className="text-white">
+                            <Icon name="bars" className="fa-lg" />
+                        </button>
+                        <h2 className="text-lg font-bold text-white ml-4">Anket Uygulaması</h2>
+                    </header>
+                    <div className="p-4 md:p-6 overflow-y-auto flex-grow">
+                        {renderView()}
+                    </div>
                 </main>
             </div>
             {showDeleteModal && (
